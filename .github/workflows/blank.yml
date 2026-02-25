@@ -10,6 +10,7 @@ on:
 jobs:
   build-debug:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,11 +29,11 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # Set up Gradle (cache, config). We will run the gradle binary provided by this action.
+      # Use modern Gradle action for caching/config
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # Use 'gradle', not './gradlew'
+      # ✅ IMPORTANT: Call 'gradle' (not './gradlew')
       - name: Build Debug APK
         run: gradle :app:assembleDebug
 
@@ -42,10 +43,11 @@ jobs:
           name: DayCard2-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-  # Optional release job; keeps the same pattern (no wrapper)
+  # Optional: release build without wrapper, ready for signing later
   build-release:
     runs-on: ubuntu-latest
     needs: build-debug
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -67,14 +69,9 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v3
 
-      # If you later add signing secrets + Gradle signing config, they will be picked up here
       - name: Assemble Release
         run: gradle :app:assembleRelease
-        env:
-          ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: keystore.jks
-          ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
-          ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        # (Signing can be added later via secrets + Gradle signing config)
 
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
