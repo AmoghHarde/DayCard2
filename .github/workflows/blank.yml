@@ -10,7 +10,6 @@ on:
 jobs:
   build-debug:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,10 +28,13 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      # Set up Gradle (cache, config). We will run the gradle binary provided by this action.
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      # Use 'gradle', not './gradlew'
       - name: Build Debug APK
-        uses: gradle/gradle-build-action@v3
-        with:
-          arguments: :app:assembleDebug
+        run: gradle :app:assembleDebug
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -40,12 +42,10 @@ jobs:
           name: DayCard2-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
+  # Optional release job; keeps the same pattern (no wrapper)
   build-release:
-    # You can trigger this manually (workflow_dispatch) or keep it on every push — up to you.
-    # It will only sign if secrets are present; otherwise it will skip signing and still produce an unsigned APK.
     runs-on: ubuntu-latest
     needs: build-debug
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -64,25 +64,13 @@ jobs:
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # Decode keystore if the secret is defined (no 'if:' expression on secrets; we guard in bash)
-      - name: Decode keystore (if provided)
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore.jks
-            echo "Keystore decoded."
-          else
-            echo "No keystore secret provided; proceeding without signing."
-          fi
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
 
-      # Build release; if signing secrets are provided and Gradle is configured to read them, it will produce a signed APK.
+      # If you later add signing secrets + Gradle signing config, they will be picked up here
       - name: Assemble Release
-        uses: gradle/gradle-build-action@v3
-        with:
-          arguments: :app:assembleRelease
+        run: gradle :app:assembleRelease
         env:
-          # These env vars are exposed as Gradle properties (ORG_GRADLE_PROJECT_*)
           ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: keystore.jks
           ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
