@@ -8,11 +8,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-debug:
     runs-on: ubuntu-latest
-
-    permissions:
-      contents: read
 
     steps:
       - name: Checkout
@@ -23,33 +20,32 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: 'gradle'
+          cache: gradle
 
-      # Install Android SDK components
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install SDK packages
+      - name: Install Android SDK packages
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # Use Gradle build action (works even if wrapper JAR isn't in repo)
       - name: Build Debug APK
         uses: gradle/gradle-build-action@v3
         with:
           arguments: :app:assembleDebug
 
-      - name: Upload debug APK
+      - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
           name: DayCard2-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-  # Optional: release build job (requires signing secrets)
-  release:
-    if: ${{ github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+  build-release:
+    # You can trigger this manually (workflow_dispatch) or keep it on every push — up to you.
+    # It will only sign if secrets are present; otherwise it will skip signing and still produce an unsigned APK.
     runs-on: ubuntu-latest
-    needs: build
+    needs: build-debug
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,35 +55,40 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: 'gradle'
+          cache: gradle
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install SDK packages
+      - name: Install Android SDK packages
         run: |
           sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
-      # Prepare keystore from secret (see Section 3 below)
-      - name: Decode keystore
-        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore.jks
+      # Decode keystore if the secret is defined (no 'if:' expression on secrets; we guard in bash)
+      - name: Decode keystore (if provided)
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore.jks
+            echo "Keystore decoded."
+          else
+            echo "No keystore secret provided; proceeding without signing."
+          fi
 
-      # Build signed release (Gradle signing config method)
+      # Build release; if signing secrets are provided and Gradle is configured to read them, it will produce a signed APK.
       - name: Assemble Release
         uses: gradle/gradle-build-action@v3
         with:
           arguments: :app:assembleRelease
         env:
+          # These env vars are exposed as Gradle properties (ORG_GRADLE_PROJECT_*)
           ORG_GRADLE_PROJECT_RELEASE_STORE_FILE: keystore.jks
           ORG_GRADLE_PROJECT_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
           ORG_GRADLE_PROJECT_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ORG_GRADLE_PROJECT_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Upload release APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
           name: DayCard2-release-apk
